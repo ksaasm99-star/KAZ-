@@ -1,0 +1,6 @@
+{
+  "name": "KAZ App Factory",
+  "description": "Smart AI Mobile App Factory - Design, architect, generate, and preview Android apps with interactive prototyping and Jetpack Compose code export.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

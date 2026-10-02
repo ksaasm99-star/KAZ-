@@ -1,0 +1,18 @@
+<resources>
+    <string name="app_name">KAZ App Factory</string>
+    <string name="app_tagline">مصنع التطبيقات الذكي بالذكاء الاصطناعي</string>
+    <string name="new_chat">محادثة جديدة</string>
+    <string name="chat_history">سجل المحادثات</string>
+    <string name="templates">نماذج جاهزة</string>
+    <string name="settings">الإعدادات</string>
+    <string name="type_hint">اكتب فكرة التطبيق هنا (مثال: تطبيق متجر إلكتروني مع سلة ودفع)...</string>
+    <string name="send">إرسال</string>
+    <string name="copy_code">نسخ الكود</string>
+    <string name="code_copied">تم نسخ الكود بنجاح!</string>
+    <string name="clear_history">مسح السجل</string>
+    <string name="dark_mode">الوضع الليلي</string>
+    <string name="light_mode">الوضع النهاري</string>
+    <string name="system_mode">تلقائي حسب النظام</string>
+    <string name="api_status_connected">متصل بـ Gemini AI</string>
+    <string name="api_status_missing">يرجى التحقق من مفتاح API</string>
+</resources>
