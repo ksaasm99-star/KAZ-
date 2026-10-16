@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -33,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kaz.appfactory.data.model.CodeSnippet
 import com.kaz.appfactory.ui.theme.*
+import com.kaz.appfactory.util.CodeExporter
 
 @Composable
 fun CodeBlockView(
@@ -132,6 +134,25 @@ fun CodeBlockView(
                             text = if (isCopied) "تم النسخ" else "نسخ الكود",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(4.dp))
+
+                    // Share as .kt File Button
+                    IconButton(
+                        onClick = {
+                            CodeExporter.exportAsKotlinFile(context, snippet.title, snippet.code)
+                        },
+                        modifier = Modifier
+                            .size(32.dp)
+                            .testTag("share_snippet_button_${snippet.id}")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Share,
+                            contentDescription = "مشاركة كملف .kt",
+                            tint = CyanNeon,
+                            modifier = Modifier.size(16.dp)
                         )
                     }
                 }

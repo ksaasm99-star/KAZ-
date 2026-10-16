@@ -12,6 +12,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.kaz.appfactory.data.model.BuildEngineType
+import com.kaz.appfactory.ui.screens.apks.ApkLibraryScreen
 import com.kaz.appfactory.ui.screens.build.BuildScreen
 import com.kaz.appfactory.ui.screens.chat.ChatScreen
 import com.kaz.appfactory.ui.screens.chat.ChatViewModel
@@ -28,7 +30,7 @@ enum class AppDestination(
 ) {
     HOME(
         route = "home",
-        titleAr = "الرئيسية",
+        titleAr = "المشاريع",
         selectedIcon = Icons.Filled.Folder,
         unselectedIcon = Icons.Outlined.Folder
     ),
@@ -38,9 +40,15 @@ enum class AppDestination(
         selectedIcon = Icons.Filled.BuildCircle,
         unselectedIcon = Icons.Outlined.BuildCircle
     ),
+    APKS(
+        route = "apks",
+        titleAr = "حزم التطبيقات",
+        selectedIcon = Icons.Filled.Android,
+        unselectedIcon = Icons.Outlined.Android
+    ),
     CHAT(
         route = "chat",
-        titleAr = "المساعد KAZ",
+        titleAr = "المحادثة الذكية",
         selectedIcon = Icons.Filled.Chat,
         unselectedIcon = Icons.Outlined.Chat
     ),
@@ -62,6 +70,7 @@ fun MainApp(
     var activeProjectId by remember { mutableLongStateOf(0L) }
     var activeProjectTitle by remember { mutableStateOf("") }
     var activeProjectCode by remember { mutableStateOf("") }
+    var activeProjectEngine by remember { mutableStateOf(BuildEngineType.AUTO) }
     var isViewingResult by remember { mutableStateOf(false) }
 
     // Hardware back button navigation
@@ -97,7 +106,7 @@ fun MainApp(
                         label = {
                             Text(
                                 text = destination.titleAr,
-                                fontSize = 11.sp
+                                fontSize = 10.sp
                             )
                         },
                         colors = NavigationBarItemDefaults.colors(
@@ -123,6 +132,7 @@ fun MainApp(
                     projectId = activeProjectId,
                     projectTitle = activeProjectTitle,
                     codeContent = activeProjectCode,
+                    engineType = activeProjectEngine,
                     onBackToProjects = { isViewingResult = false },
                     onOpenChat = { projectId ->
                         chatViewModel.selectConversation(projectId, activeProjectTitle)
@@ -141,6 +151,7 @@ fun MainApp(
                                 activeProjectId = id
                                 activeProjectTitle = title
                                 activeProjectCode = code
+                                activeProjectEngine = BuildEngineType.AUTO
                                 isViewingResult = true
                             }
                         )
@@ -148,11 +159,20 @@ fun MainApp(
 
                     AppDestination.BUILD -> {
                         BuildScreen(
-                            onBuildComplete = { id, title, code ->
+                            onBuildComplete = { id, title, code, engine ->
                                 activeProjectId = id
                                 activeProjectTitle = title
                                 activeProjectCode = code
+                                activeProjectEngine = engine
                                 isViewingResult = true
+                            }
+                        )
+                    }
+
+                    AppDestination.APKS -> {
+                        ApkLibraryScreen(
+                            onNavigateToBuild = {
+                                currentDestination = AppDestination.BUILD
                             }
                         )
                     }

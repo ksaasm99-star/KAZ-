@@ -1,18 +1,80 @@
 <resources>
     <string name="app_name">KAZ App Factory</string>
     <string name="app_tagline">مصنع التطبيقات الذكي بالذكاء الاصطناعي</string>
-    <string name="new_chat">محادثة جديدة</string>
-    <string name="chat_history">سجل المحادثات</string>
-    <string name="templates">نماذج جاهزة</string>
-    <string name="settings">الإعدادات</string>
-    <string name="type_hint">اكتب فكرة التطبيق هنا (مثال: تطبيق متجر إلكتروني مع سلة ودفع)...</string>
-    <string name="send">إرسال</string>
-    <string name="copy_code">نسخ الكود</string>
-    <string name="code_copied">تم نسخ الكود بنجاح!</string>
-    <string name="clear_history">مسح السجل</string>
-    <string name="dark_mode">الوضع الليلي</string>
-    <string name="light_mode">الوضع النهاري</string>
-    <string name="system_mode">تلقائي حسب النظام</string>
-    <string name="api_status_connected">متصل بـ Gemini AI</string>
-    <string name="api_status_missing">يرجى التحقق من مفتاح API</string>
+    <string name="owner_badge">المستخدم: المالك • وصول كامل وبلا قيود</string>
+
+    <!-- Navigation -->
+    <string name="nav_home">الرئيسية</string>
+    <string name="nav_build">بناء تطبيق</string>
+    <string name="nav_chat">المساعد KAZ</string>
+    <string name="nav_settings">الإعدادات</string>
+
+    <!-- Home Screen -->
+    <string name="home_title">KAZ - مصنع التطبيقات</string>
+    <string name="home_dashboard_card_title">لوحة تحكم مصنع التطبيقات</string>
+    <string name="home_dashboard_card_desc">ابنِ تطبيقات أندرويد متكاملة بمجرد كتابة الفكرة. يقوم KAZ بكتابة الكود كاملًا وتوليد واجهات Compose مع Room Database و Clean Architecture.</string>
+    <string name="home_new_project_btn">بدء مشروع جديد الآن</string>
+    <string name="home_search_placeholder">ابحث في مشاريعك المحفوظة...</string>
+    <string name="home_saved_projects_title">المشاريع المحفوظة محليًا:</string>
+    <string name="home_empty_title">لم يتم إنشاء مشاريع بعد</string>
+    <string name="home_empty_desc">اضغط على \'مشروع جديد\' للبدء في بناء تطبيقك الأول</string>
+    <string name="home_view_code">عرض الكود والنتيجة</string>
+    <string name="home_delete_project_title">حذف المشروع</string>
+    <string name="home_delete_project_confirm">هل أنت متأكد من حذف هذا المشروع نهائيًا؟</string>
+
+    <!-- Build Screen -->
+    <string name="build_screen_title">مصنع التطبيقات - بناء تطبيق جديد</string>
+    <string name="build_hero_title">اختر قالباً جاهزاً أو اكتب فكرتك بالعربي</string>
+    <string name="build_hero_desc">سيقوم Gemini API بإنشاء هيكلية وكود Kotlin و Jetpack Compose متكامل بنسبة 100%.</string>
+    <string name="build_templates_title">نماذج المشاريع الجاهزة (Project Templates):</string>
+    <string name="build_templates_subtitle">اضغط على أي نموذج لتعبئة الوصف والبدء في بناء تطبيقك فوراً:</string>
+    <string name="build_clear_selection">مسح التحديد</string>
+    <string name="build_selected_badge">مختار ✓</string>
+    <string name="build_use_template">اختيار هذا القالب</string>
+    <string name="build_prompt_label">وصف التطبيق المطلوب (Prompt):</string>
+    <string name="build_prompt_hint">مثال: أريد تطبيق متجر لبيع القهوة يحتوي على قائمة أصناف مع الصور والأسعار، وسلة تسوق، وزر لإتمام الشراء، وحفظ الطلبات في Room Database...</string>
+    <string name="build_tech_specs_title">المواصفات التقنية للكود المولد تلقائيًا:</string>
+    <string name="build_action_btn">ابنِ التطبيق الآن (Generate App)</string>
+    <string name="build_action_progress">جاري البناء بواسطة KAZ AI...</string>
+
+    <!-- Result Screen -->
+    <string name="result_screen_subtitle">الكود البرمجي الكامل • جاهز للاستخدام والتصدير</string>
+    <string name="result_copy_btn">نسخ الكود البرمجي</string>
+    <string name="result_copied_feedback">تم النسخ!</string>
+    <string name="result_share_export_btn">مشاركة وتصدير</string>
+    <string name="result_preview_btn">معاينة</string>
+    <string name="result_refine_chat_btn">محادثة وتعديل</string>
+
+    <!-- Export & Share -->
+    <string name="export_sheet_title">مشاركة وتصدير المشروع</string>
+    <string name="export_kt_title">تصدير كملف Kotlin (.kt)</string>
+    <string name="export_kt_desc">حفظ ومشاركة الكود كملف برمجي جاهز للتشغيل مباشرة في Android Studio</string>
+    <string name="export_zip_title">تصدير كمشروع مضغوط (.zip)</string>
+    <string name="export_zip_desc">حزمة مشروع كاملة تضم جميع الملفات البرمجية (src/) مع ملف README.md وتعليمات التشغيل</string>
+    <string name="export_text_title">مشاركة كنص مباشر</string>
+    <string name="export_text_desc">إرسال الكود كنص عبر تطبيقات المراسلة أو البريد الإلكتروني</string>
+    <string name="export_copy_title">نسخ الكود إلى الحافظة</string>
+    <string name="export_copy_desc">نسخ النص البرمجي بالكامل للصقه في أي محرر نصوص</string>
+
+    <!-- Settings Screen -->
+    <string name="settings_title">الإعدادات والتخصيص</string>
+    <string name="settings_theme_title">مظهر التطبيق (الوضع الليلي والنهاري)</string>
+    <string name="dark_mode">الوضع الليلي (الداكن)</string>
+    <string name="light_mode">الوضع النهاري (الفاتح)</string>
+    <string name="system_mode">تلقائي حسب نظام الجهاز</string>
+    <string name="settings_api_title">حالة اتصال Gemini API</string>
+    <string name="api_status_connected">متصل وجاهز</string>
+    <string name="api_status_missing">غير مفعّل</string>
+    <string name="settings_api_desc">يستخدم التطبيق مفتاح Gemini API المدمج تلقائيًا، ويمكنك إدخال مفتاح مخصص إذا رغبت في ذلك:</string>
+    <string name="settings_api_input_hint">أدخل مفتاح Gemini API المخصص (اختياري)...</string>
+    <string name="settings_api_save_btn">حفظ المفتاح</string>
+    <string name="settings_about_title">عن تطبيق KAZ (مصنع التطبيقات الذكي)</string>
+    <string name="settings_about_desc">تطبيق KAZ هو مساعد ذكي متخصص في توليد وبناء تطبيقات أندرويد الحديثة عبر الذكاء الاصطناعي التوليدي من Google Gemini. يقوم بإنشاء الأكواد البرمجية الكاملة بنسبة 100% مع واجهات Jetpack Compose و Clean Architecture وتخزين محلي مع Room Database.</string>
+    <string name="settings_version_info">الإصدار 1.0 • صُنع بامتياز لأندرويد</string>
+
+    <!-- General -->
+    <string name="delete">حذف</string>
+    <string name="cancel">إلغاء</string>
+    <string name="close">إغلاق</string>
+    <string name="back">الرجوع</string>
 </resources>

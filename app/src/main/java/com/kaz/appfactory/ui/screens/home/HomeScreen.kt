@@ -18,17 +18,23 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.kaz.appfactory.KazApplication
-import com.kaz.appfactory.data.local.entities.ConversationEntity
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.kaz.appfactory.R
+import com.kaz.appfactory.data.model.QuickBuildTemplate
+import com.kaz.appfactory.data.model.QuickTemplateCatalog
+import com.kaz.appfactory.domain.model.Project
+import com.kaz.appfactory.ui.components.ExportBottomSheet
+import com.kaz.appfactory.ui.screens.build.TemplateBuildDialog
 import com.kaz.appfactory.ui.theme.CyanNeon
 import com.kaz.appfactory.ui.theme.IndigoDeep
 import com.kaz.appfactory.ui.theme.IndigoRoyal
 import com.kaz.appfactory.ui.theme.TealAccent
-import kotlinx.coroutines.launch
+import androidx.compose.foundation.lazy.LazyRow
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -38,43 +44,45 @@ import java.util.Locale
 fun HomeScreen(
     onNewProjectClicked: () -> Unit,
     onOpenProject: (Long, String, String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    viewModel: HomeViewModel = viewModel()
 ) {
-    val repository = remember { KazApplication.instance.chatRepository }
-    val conversations by repository.allConversations.collectAsStateWithLifecycle(initialValue = emptyList())
-    val coroutineScope = rememberCoroutineScope()
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    var templateForDialog by remember { mutableStateOf<QuickBuildTemplate?>(null) }
 
-    var searchQuery by remember { mutableStateOf("") }
-    var itemToDelete by remember { mutableStateOf<ConversationEntity?>(null) }
-
-    val filteredProjects = remember(conversations, searchQuery) {
-        if (searchQuery.isBlank()) conversations
-        else conversations.filter {
-            it.title.contains(searchQuery, ignoreCase = true) ||
-                    it.summary.contains(searchQuery, ignoreCase = true)
-        }
+    if (templateForDialog != null) {
+        TemplateBuildDialog(
+            template = templateForDialog!!,
+            onDismiss = { templateForDialog = null },
+            onSuccess = { id, title, code ->
+                templateForDialog = null
+                onOpenProject(id, title, code)
+            }
+        )
     }
 
-    if (itemToDelete != null) {
+    state.projectToExport?.let { project ->
+        ExportBottomSheet(
+            projectName = project.title,
+            codeContent = project.generatedCode,
+            snippets = emptyList(),
+            onDismiss = viewModel::dismissExportSheet
+        )
+    }
+
+    state.projectToDelete?.let { project ->
         AlertDialog(
-            onDismissRequest = { itemToDelete = null },
-            title = { Text("حذف المشروع") },
-            text = { Text("هل أنت متأكد من حذف مشروع \"${itemToDelete?.title}\"؟") },
+            onDismissRequest = viewModel::dismissDeleteDialog,
+            title = { Text(stringResource(R.string.home_delete_project_title)) },
+            text = { Text("${stringResource(R.string.home_delete_project_confirm)} \"${project.title}\"؟") },
             confirmButton = {
-                TextButton(
-                    onClick = {
-                        itemToDelete?.let {
-                            coroutineScope.launch { repository.deleteConversation(it.id) }
-                        }
-                        itemToDelete = null
-                    }
-                ) {
-                    Text("حذف", color = MaterialTheme.colorScheme.error)
+                TextButton(onClick = viewModel::confirmDeleteProject) {
+                    Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { itemToDelete = null }) {
-                    Text("إلغاء")
+                TextButton(onClick = viewModel::dismissDeleteDialog) {
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )
@@ -105,12 +113,12 @@ fun HomeScreen(
                         Spacer(modifier = Modifier.width(10.dp))
                         Column {
                             Text(
-                                text = "KAZ - مصنع التطبيقات",
+                                text = stringResource(R.string.home_title),
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "المستخدم: المالك • وصول كامل وبلا قيود",
+                                text = stringResource(R.string.owner_badge),
                                 fontSize = 10.sp,
                                 color = CyanNeon
                             )
@@ -165,7 +173,7 @@ fun HomeScreen(
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = "لوحة تحكم مصنع التطبيقات",
+                                    text = stringResource(R.string.home_dashboard_card_title),
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 14.sp,
                                     color = Color.White
@@ -176,7 +184,7 @@ fun HomeScreen(
                                 color = CyanNeon.copy(alpha = 0.2f)
                             ) {
                                 Text(
-                                    text = "${conversations.size} مشاريع",
+                                    text = "${state.projects.size} مشاريع",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = CyanNeon,
@@ -188,7 +196,7 @@ fun HomeScreen(
                         Spacer(modifier = Modifier.height(10.dp))
 
                         Text(
-                            text = "ابنِ تطبيقات أندرويد متكاملة بمجرد كتابة الفكرة. يقوم KAZ بكتابة الكود كاملًا وتوليد واجهات Compose مع Room Database و Clean Architecture.",
+                            text = stringResource(R.string.home_dashboard_card_desc),
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             lineHeight = 18.sp
@@ -207,7 +215,87 @@ fun HomeScreen(
                         ) {
                             Icon(Icons.Default.AddCircle, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("بدء مشروع جديد الآن (New Project)", fontWeight = FontWeight.Bold)
+                            Text(stringResource(R.string.home_new_project_btn), fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+
+            // Quick Ready-to-build Templates Section
+            item {
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Bolt,
+                                contentDescription = null,
+                                tint = CyanNeon,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "بناء سريع بنقرة واحدة (1-Click)",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp
+                            )
+                        }
+                        Text(
+                            text = "عرض الكل",
+                            fontSize = 11.sp,
+                            color = CyanNeon,
+                            modifier = Modifier.clickable { onNewProjectClicked() }
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(QuickTemplateCatalog.allTemplates, key = { it.id }) { template ->
+                            Surface(
+                                modifier = Modifier
+                                    .width(180.dp)
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
+                                    .clickable { templateForDialog = template },
+                                shape = RoundedCornerShape(14.dp),
+                                color = MaterialTheme.colorScheme.surface
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(CyanNeon.copy(alpha = 0.15f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(text = template.iconEmoji, fontSize = 20.sp)
+                                    }
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Column {
+                                        Text(
+                                            text = template.titleAr,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp,
+                                            maxLines = 1
+                                        )
+                                        Text(
+                                            text = "بناء وتثبيت ⚡",
+                                            fontSize = 10.sp,
+                                            color = CyanNeon,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -216,13 +304,13 @@ fun HomeScreen(
             // Search Bar
             item {
                 OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    placeholder = { Text("ابحث في مشاريعك المحفوظة...") },
+                    value = state.searchQuery,
+                    onValueChange = viewModel::onSearchQueryChanged,
+                    placeholder = { Text(stringResource(R.string.home_search_placeholder)) },
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                     trailingIcon = {
-                        if (searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { searchQuery = "" }) {
+                        if (state.searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { viewModel.onSearchQueryChanged("") }) {
                                 Icon(Icons.Default.Clear, contentDescription = null)
                             }
                         }
@@ -246,14 +334,14 @@ fun HomeScreen(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        text = "المشاريع المحفوظة محليًا:",
+                        text = stringResource(R.string.home_saved_projects_title),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
                 }
             }
 
-            if (filteredProjects.isEmpty()) {
+            if (state.projects.isEmpty()) {
                 item {
                     Box(
                         modifier = Modifier
@@ -270,13 +358,13 @@ fun HomeScreen(
                             )
                             Spacer(modifier = Modifier.height(10.dp))
                             Text(
-                                text = if (searchQuery.isEmpty()) "لم يتم إنشاء مشاريع بعد" else "لا توجد نتائج تطابق بحثك",
+                                text = if (state.searchQuery.isEmpty()) stringResource(R.string.home_empty_title) else "لا توجد نتائج تطابق بحثك",
                                 style = MaterialTheme.typography.titleMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "اضغط على 'مشروع جديد' للبدء في بناء تطبيقك الأول",
+                                text = stringResource(R.string.home_empty_desc),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                             )
@@ -284,11 +372,12 @@ fun HomeScreen(
                     }
                 }
             } else {
-                items(filteredProjects, key = { it.id }) { project ->
+                items(state.projects, key = { it.id }) { project ->
                     HomeProjectCard(
                         project = project,
                         onClick = { onOpenProject(project.id, project.title, project.generatedCode) },
-                        onDelete = { itemToDelete = project }
+                        onShare = { viewModel.requestExportProject(project) },
+                        onDelete = { viewModel.requestDeleteProject(project) }
                     )
                 }
             }
@@ -298,8 +387,9 @@ fun HomeScreen(
 
 @Composable
 fun HomeProjectCard(
-    project: ConversationEntity,
+    project: Project,
     onClick: () -> Unit,
+    onShare: () -> Unit,
     onDelete: () -> Unit
 ) {
     val dateStr = remember(project.updatedAt) {
@@ -349,13 +439,27 @@ fun HomeProjectCard(
                     )
                 }
 
-                IconButton(onClick = onDelete) {
-                    Icon(
-                        imageVector = Icons.Default.DeleteOutline,
-                        contentDescription = "حذف",
-                        tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
-                        modifier = Modifier.size(20.dp)
-                    )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = onShare,
+                        modifier = Modifier.testTag("share_project_${project.id}")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Share,
+                            contentDescription = "مشاركة وتصدير",
+                            tint = CyanNeon,
+                            modifier = Modifier.size(19.dp)
+                        )
+                    }
+
+                    IconButton(onClick = onDelete) {
+                        Icon(
+                            imageVector = Icons.Default.DeleteOutline,
+                            contentDescription = "حذف",
+                            tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
+                            modifier = Modifier.size(19.dp)
+                        )
+                    }
                 }
             }
 

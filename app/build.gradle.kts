@@ -93,5 +93,8 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.okhttp.logging)
 
+    // APK Signing Library
+    implementation("com.android.tools.build:apksig:8.7.3")
+
     debugImplementation(libs.androidx.ui.tooling)
 }

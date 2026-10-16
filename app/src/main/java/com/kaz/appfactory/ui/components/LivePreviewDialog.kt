@@ -25,6 +25,8 @@ import com.kaz.appfactory.ui.theme.CyanNeon
 import com.kaz.appfactory.ui.theme.IndigoRoyal
 import com.kaz.appfactory.ui.theme.TealAccent
 
+import com.kaz.appfactory.webview.WebViewShell
+
 data class MockItem(
     val id: Int,
     val title: String,
@@ -37,6 +39,7 @@ data class MockItem(
 @Composable
 fun LivePreviewDialog(
     appName: String,
+    htmlContent: String? = null,
     onDismiss: () -> Unit
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
@@ -133,13 +136,26 @@ fun LivePreviewDialog(
                     }
                 }
             ) { padding ->
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding)
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
+                if (!htmlContent.isNullOrBlank()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(padding)
+                            .background(Color(0xFF0D1117))
+                    ) {
+                        WebViewShell(
+                            htmlContent = htmlContent,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(padding)
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
                     item {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
@@ -246,4 +262,5 @@ fun LivePreviewDialog(
             }
         }
     }
+}
 }
