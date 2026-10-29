@@ -1,0 +1,132 @@
+name: Build KAZ APK
+
+run-name: KAZ APK build — ${{ github.event.client_payload.request_id || github.run_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      project_json_b64:
+        description: "Base64 JSON for the KAZ project draft"
+        required: true
+        type: string
+  repository_dispatch:
+    types: [kaz-build]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: kaz-apk-build-${{ github.event.client_payload.request_id || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.10"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android build tools
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Materialize project draft
+        env:
+          PROJECT_JSON_B64: ${{ github.event.client_payload.project_json_b64 || inputs.project_json_b64 }}
+        run: |
+          python3 - <<'PY'
+          import base64
+          import html
+          import json
+          import pathlib
+          import re
+
+          raw = base64.b64decode(__import__('os').environ['PROJECT_JSON_B64']).decode('utf-8')
+          project = json.loads(raw)
+          title = str(project.get('title') or 'KAZ App').strip() or 'KAZ App'
+          summary = str(project.get('summary') or '').strip()
+          sources = project.get('sources') or []
+          knowledge = project.get('knowledge') or []
+          safe_title = re.sub(r'[^A-Za-z0-9_\-\u0600-\u06FF]+', '_', title).strip('_') or 'KAZ_App'
+          safe_title = safe_title[:48]
+
+          def item_list(items, key):
+              return ''.join(f'<li><strong>{html.escape(str(item.get(key, "")))}</strong><br>{html.escape(str(item.get("value", item.get("content", ""))))}</li>' for item in items)
+
+          document = f'''<!doctype html>
+          <html lang="ar" dir="rtl">
+          <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{html.escape(title)}</title>
+          <style>body{{font-family:system-ui,sans-serif;background:#0b1220;color:#edf6ff;margin:0;padding:20px;line-height:1.7}}main{{max-width:720px;margin:auto}}section{{background:#142238;border:1px solid #29415f;border-radius:16px;padding:18px;margin:14px 0}}h1{{color:#7de7e4}}h2{{font-size:17px}}li{{margin:8px 0}}</style></head>
+          <body><main><section><h1>{html.escape(title)}</h1><p>{html.escape(summary)}</p></section>
+          <section><h2>مصادر المشروع</h2><ul>{item_list(sources, 'name') or '<li>لا توجد مصادر</li>'}</ul></section>
+          <section><h2>معرفة المشروع</h2><ul>{item_list(knowledge, 'title') or '<li>لا توجد معرفة</li>'}</ul></section></main></body></html>'''
+
+          root = pathlib.Path('web/factory-template/app/src/main')
+          (root / 'assets').mkdir(parents=True, exist_ok=True)
+          (root / 'assets/index.html').write_text(document, encoding='utf-8')
+          (root / 'res/values/strings.xml').write_text(
+              '<?xml version="1.0" encoding="utf-8"?><resources><string name="app_name">'
+              + html.escape(title, quote=True) + '</string></resources>', encoding='utf-8')
+          pathlib.Path('build-output').mkdir(exist_ok=True)
+          pathlib.Path('build-output/build-name.txt').write_text(safe_title, encoding='utf-8')
+          print(f'MATERIALIZED_PROJECT={safe_title}')
+          print(f'SOURCES={len(sources)} KNOWLEDGE={len(knowledge)}')
+          PY
+
+      - name: Build debug APK
+        working-directory: web/factory-template
+        run: gradle --no-daemon --stacktrace assembleDebug
+
+      - name: Prepare APK artifact
+        id: artifact
+        run: |
+          NAME=$(cat build-output/build-name.txt)
+          APK="${NAME}.apk"
+          cp web/factory-template/app/build/outputs/apk/debug/app-debug.apk "build-output/${APK}"
+          sha256sum "build-output/${APK}" | tee "build-output/${APK}.sha256"
+          echo "apk=${APK}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kaz-apk-${{ github.run_id }}
+          path: |
+            build-output/*.apk
+            build-output/*.sha256
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish direct download release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="kaz-build-${GITHUB_RUN_ID}"
+          APK="build-output/${{ steps.artifact.outputs.apk }}"
+          gh release create "$TAG" "$APK" "${APK}.sha256" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "KAZ APK build ${GITHUB_RUN_NUMBER}" \
+            --notes "Generated from KAZ project draft. Source commit: ${GITHUB_SHA}."
+          URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${{ steps.artifact.outputs.apk }}"
+          echo "apk_url=${URL}" >> "$GITHUB_OUTPUT"
+          {
+            echo "## KAZ APK"
+            echo ""
+            echo "Direct download: ${URL}"
+            echo ""
+            echo "Source commit: ${GITHUB_SHA}"
+          } >> "$GITHUB_STEP_SUMMARY"
