@@ -1,0 +1,44 @@
+name: KAZ Web Agent Runtime
+
+on:
+  push:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kaz-web-agent-runtime-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  agent-runtime:
+    name: AgentTask Runtime
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.18.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Install Web dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Run AgentTask Runtime test
+        run: pnpm run test:agent-runtime
+
+      - name: Run TypeScript check
+        run: pnpm run check

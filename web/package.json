@@ -8,6 +8,7 @@
     "dev": "vite --host 0.0.0.0",
     "build": "tsc -b && vite build",
     "check": "tsc -b --pretty false",
+    "test:agent-runtime": "node tests/agent-runtime.test.mjs",
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {

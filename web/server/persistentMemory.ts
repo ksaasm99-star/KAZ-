@@ -1,3 +1,6 @@
+import { createProjectManifest, normalizeProjectManifest } from "../src/agent/projectManifest";
+import type { ProjectManifest } from "../src/agent/projectManifest";
+
 type SqliteDatabase = {
   exec(sql: string): void;
   prepare(sql: string): { all(...params: unknown[]): Record<string, unknown>[]; get(...params: unknown[]): Record<string, unknown> | undefined; run(...params: unknown[]): { changes: number } };
@@ -20,6 +23,7 @@ export type StoredProject = {
   sources: Array<{ id: string; name: string; kind: "file" | "link" | "note"; value: string }>;
   knowledge: Array<{ id: string; title: string; content: string }>;
   messages: Array<{ id: string; role: "user" | "assistant"; text: string }>;
+  manifest: ProjectManifest;
 };
 
 export class PersistentMemory {
@@ -37,7 +41,8 @@ export class PersistentMemory {
         summary TEXT NOT NULL,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
-        archived_at TEXT
+        archived_at TEXT,
+        manifest_json TEXT
       );
       CREATE TABLE IF NOT EXISTS project_sources (
         id TEXT PRIMARY KEY,
@@ -93,6 +98,10 @@ export class PersistentMemory {
       CREATE INDEX IF NOT EXISTS idx_messages_project ON project_messages(project_id, created_at);
       CREATE INDEX IF NOT EXISTS idx_events_project ON memory_events(project_id, created_at DESC);
     `);
+    const projectColumns = this.db.prepare("PRAGMA table_info(projects)").all();
+    if (!projectColumns.some((column) => String(column.name) === "manifest_json")) {
+      this.db.exec("ALTER TABLE projects ADD COLUMN manifest_json TEXT");
+    }
     const indexed = this.db.prepare("SELECT COUNT(*) AS count FROM memory_search").get();
     if (Number(indexed?.count ?? 0) === 0) {
       const projects = this.db.prepare("SELECT id FROM projects WHERE archived_at IS NULL").all();
@@ -101,17 +110,17 @@ export class PersistentMemory {
   }
 
   listProjects(): StoredProject[] {
-    const rows = this.db.prepare("SELECT id, title, summary, updated_at AS updatedAt FROM projects WHERE archived_at IS NULL ORDER BY updated_at DESC").all();
+    const rows = this.db.prepare("SELECT id, title, summary, updated_at AS updatedAt, manifest_json AS manifestJson FROM projects WHERE archived_at IS NULL ORDER BY updated_at DESC").all();
     return rows.map((row) => this.hydrate(row));
   }
 
   listArchivedProjects(): StoredProject[] {
-    const rows = this.db.prepare("SELECT id, title, summary, updated_at AS updatedAt FROM projects WHERE archived_at IS NOT NULL ORDER BY updated_at DESC").all();
+    const rows = this.db.prepare("SELECT id, title, summary, updated_at AS updatedAt, manifest_json AS manifestJson FROM projects WHERE archived_at IS NOT NULL ORDER BY updated_at DESC").all();
     return rows.map((row) => this.hydrate(row));
   }
 
   getProject(id: string): StoredProject | null {
-    const row = this.db.prepare("SELECT id, title, summary, updated_at AS updatedAt FROM projects WHERE id = ? AND archived_at IS NULL").get(id);
+    const row = this.db.prepare("SELECT id, title, summary, updated_at AS updatedAt, manifest_json AS manifestJson FROM projects WHERE id = ? AND archived_at IS NULL").get(id);
     return row ? this.hydrate(row) : null;
   }
 
@@ -122,12 +131,12 @@ export class PersistentMemory {
     this.db.exec("BEGIN");
     try {
       if (existing) {
-        this.db.prepare("UPDATE projects SET title = ?, summary = ?, updated_at = ?, archived_at = NULL WHERE id = ?").run(project.title, project.summary, project.updatedAt || now, project.id);
+        this.db.prepare("UPDATE projects SET title = ?, summary = ?, updated_at = ?, archived_at = NULL, manifest_json = ? WHERE id = ?").run(project.title, project.summary, project.updatedAt || now, JSON.stringify(project.manifest), project.id);
         this.db.prepare("UPDATE project_sources SET archived_at = ? WHERE project_id = ? AND archived_at IS NULL").run(now, project.id);
         this.db.prepare("UPDATE project_knowledge SET archived_at = ? WHERE project_id = ? AND archived_at IS NULL").run(now, project.id);
         this.db.prepare("UPDATE project_messages SET archived_at = ? WHERE project_id = ? AND archived_at IS NULL").run(now, project.id);
       } else {
-        this.db.prepare("INSERT INTO projects (id, title, summary, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").run(project.id, project.title, project.summary, createdAt, project.updatedAt || now);
+        this.db.prepare("INSERT INTO projects (id, title, summary, created_at, updated_at, manifest_json) VALUES (?, ?, ?, ?, ?, ?)").run(project.id, project.title, project.summary, createdAt, project.updatedAt || now, JSON.stringify(project.manifest));
       }
       const sourceInsert = this.db.prepare("INSERT INTO project_sources (id, project_id, name, kind, value, created_at, archived_at) VALUES (?, ?, ?, ?, ?, ?, NULL) ON CONFLICT(id) DO UPDATE SET project_id = excluded.project_id, name = excluded.name, kind = excluded.kind, value = excluded.value, created_at = excluded.created_at, archived_at = NULL");
       for (const source of project.sources) sourceInsert.run(source.id, project.id, source.name, source.kind, source.value, now);
@@ -199,7 +208,7 @@ export class PersistentMemory {
   }
 
   private rebuildSearchIndex(projectId: string) {
-    const project = this.db.prepare("SELECT id, title, summary, updated_at AS updatedAt FROM projects WHERE id = ? AND archived_at IS NULL").get(projectId);
+    const project = this.db.prepare("SELECT id, title, summary, updated_at AS updatedAt, manifest_json AS manifestJson FROM projects WHERE id = ? AND archived_at IS NULL").get(projectId);
     this.db.prepare("DELETE FROM memory_search WHERE project_id = ?").run(projectId);
     if (!project) return;
     const insert = this.db.prepare("INSERT INTO memory_search (entity_type, entity_id, project_id, title, content, created_at) VALUES (?, ?, ?, ?, ?, ?)");
@@ -217,6 +226,15 @@ export class PersistentMemory {
     const sources = this.db.prepare("SELECT id, name, kind, value FROM project_sources WHERE project_id = ? AND archived_at IS NULL ORDER BY created_at").all(id).map((item) => ({ id: String(item.id), name: String(item.name), kind: item.kind as "file" | "link" | "note", value: String(item.value) }));
     const knowledge = this.db.prepare("SELECT id, title, content FROM project_knowledge WHERE project_id = ? AND archived_at IS NULL ORDER BY created_at").all(id).map((item) => ({ id: String(item.id), title: String(item.title), content: String(item.content) }));
     const messages = this.db.prepare("SELECT id, role, text FROM project_messages WHERE project_id = ? AND archived_at IS NULL ORDER BY created_at").all(id).map((item) => ({ id: String(item.id), role: item.role as "user" | "assistant", text: String(item.text) }));
-    return { id, title: String(row.title), summary: String(row.summary), updatedAt: String(row.updatedAt), sources, knowledge, messages };
+    const project = { id, title: String(row.title), summary: String(row.summary), updatedAt: String(row.updatedAt) };
+    let manifest: Partial<ProjectManifest> | undefined;
+    if (typeof row.manifestJson === "string" && row.manifestJson.trim()) {
+      try {
+        manifest = JSON.parse(row.manifestJson) as Partial<ProjectManifest>;
+      } catch {
+        manifest = undefined;
+      }
+    }
+    return { ...project, sources, knowledge, messages, manifest: normalizeProjectManifest(project, manifest) };
   }
 }

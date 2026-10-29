@@ -35,6 +35,29 @@ export async function loadProjects(): Promise<{ projects: Project[]; persistent:
   }
 }
 
+export async function loadProject(id: string): Promise<Project> {
+  const result = await request<{ project: Project }>(`/api/memory/projects/${encodeURIComponent(id)}`);
+  if (!result.project) throw new Error("المشروع غير موجود.");
+  return result.project;
+}
+
+export type MemorySearchResult = {
+  entityType: string;
+  entityId: string;
+  projectId: string;
+  title: string;
+  content: string;
+  createdAt: string;
+};
+
+export async function searchProjectMemory(query: string, projectId: string): Promise<{ results: MemorySearchResult[]; persistent: boolean }> {
+  return request<{ results: MemorySearchResult[]; persistent: boolean }>("/api/memory/search", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ q: query, projectId }),
+  });
+}
+
 export async function loadArchivedProjects(): Promise<{ projects: Project[]; persistent: boolean }> {
   try {
     return await request<{ projects: Project[]; persistent: boolean }>("/api/memory/projects/archived");
