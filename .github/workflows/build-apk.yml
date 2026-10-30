@@ -130,10 +130,10 @@ jobs:
           print(f'SOURCES={len(sources)} KNOWLEDGE={len(knowledge)}')
           PY
 
-      - name: Compile Kotlin sources
+      - name: Compile Java sources
         id: compile
         working-directory: web/factory-template
-        run: gradle --no-daemon --stacktrace :app:compileDebugKotlin
+        run: gradle --no-daemon --stacktrace :app:compileDebugJavaWithJavac
 
       - name: Build debug APK
         id: build

@@ -1,4 +1,4 @@
-package com.kaz.shell;
+package com.kaz.generated;
 
 import android.app.Activity;
 import android.os.Bundle;
