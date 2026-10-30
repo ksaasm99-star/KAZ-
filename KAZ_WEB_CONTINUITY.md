@@ -364,3 +364,15 @@
 ## P4.4 — Mobile/RTL Web Acceptance — 2026-10-30
 
 تم التحقق داخل `web/` فقط. Headless Chromium على 390x844 أثبت عرض الصفحة الرئيسية ومساحة المشاريع، وفحص المعاينة أثبت `lang=ar`, `dir=rtl`, و`bodyDirection=rtl` ووجود `.mobile-nav`. المسارات الثمانية و`/manus-routes.json` أعادت HTTP 200. `npx tsc --noEmit`, `npm run build`, و`git diff --check` نجحت. `pnpm test` أعاد PASS=29 وFAIL=0 وBLOCKED=1 لاختبار خارجي اختياري يحتاج مفتاحًا. API status/health/Ollama بقيت صادقة: KAZ API معطل، النواة صحية، وOllama BLOCKED/503 عند الغياب. لم يتم تعديل Android أو بناء APK؛ الحالة خارج هذا الإغلاق BLOCKED.
+
+
+## P4.5.1 — Unified Connector Contract — 2026-10-30
+الحالة: `TESTED`، وليست تكاملًا خارجيًا مكتملًا.
+
+أضيف `web/src/agent/unifiedConnector.ts` كعقد موحد للعمليات `analyze`, `plan`, `preview`, `apply`, `build`, `artifact`. يدعم العقد قائمة موصلات قابلة للاختيار: `github` و`kaz-workspace`، مع حالة الاتصال ونمط المصادقة والصلاحيات المطلوبة لموافقة المالك. لا ينفذ العقد اتصال GitHub ولا يتجاوز Pipeline الحالي.
+
+وُسّع `web/src/agent/factoryRequest.ts` ليحمل binding الموصل الافتراضي داخل `TypedFactoryRequest`، وتدخل هوية الموصل وقدراته في `inputDigest`; تغيير الموصل بعد إنشاء الطلب يفشل تحقق SHA-256. أضيف `web/tests/unified-connector.test.mjs` وscript `test:unified-connector`.
+
+الأدلة: `node tests/unified-connector.test.mjs` EXIT 0، `npx tsc --noEmit` EXIT 0، `npm run build` EXIT 0، و`git diff --check` EXIT 0. النسخة الاحتياطية: `/home/ubuntu/kaz-backup/web/` وتم تحديث الملفات الأربعة بنجاح.
+
+الحدود: لم يُنفذ OAuth أو GitHub Actions أو Backend connector adapter أو واجهة اختيار الموصل بعد. لم يُلمس Android ولم يُبنَ APK ولم يُنفذ Commit أو Push.

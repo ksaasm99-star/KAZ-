@@ -510,7 +510,7 @@ async function readFactoryVerification(runId: number, requestId: string, project
   if (!jobsResponse.ok) return undefined;
   const jobsBody = await jobsResponse.json() as { jobs?: Array<{ id: number; name?: string; steps?: Array<{ name?: string; conclusion?: string; completed_at?: string }> }> };
   const steps = (jobsBody.jobs || []).flatMap((job) => job.steps || []);
-  const compileStep = steps.find((step) => step.name === "Compile Kotlin sources");
+  const compileStep = steps.find((step) => step.name === "Compile Java sources");
   const buildStep = steps.find((step) => step.name === "Build debug APK");
   const evidence = {
     runId: String(runId),

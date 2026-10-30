@@ -10,6 +10,7 @@
     "build": "tsc -b && vite build",
     "check": "tsc -b --pretty false",
     "test:factory-request": "node tests/factory-request.test.mjs",
+    "test:unified-connector": "node tests/unified-connector.test.mjs",
     "test:factory-project-types": "node tests/factory-project-types.test.mjs",
     "test:agent-factory-request": "node tests/agent-factory-request.test.mjs",
     "test:approval-integrity": "node tests/approval-integrity.test.mjs",

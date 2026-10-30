@@ -1,6 +1,7 @@
 export const FACTORY_REQUEST_SCHEMA_VERSION = 1 as const;
 
 import { isFactoryTargetPlatformRegistered, type FactoryTargetPlatform } from "./factoryProjectTypes";
+import { DEFAULT_FACTORY_CONNECTOR, isFactoryConnectorBinding, type FactoryConnectorBinding } from "./unifiedConnector";
 
 export type { FactoryTargetPlatform } from "./factoryProjectTypes";
 
@@ -21,6 +22,7 @@ export type TypedFactoryRequestInput = {
   requirements: string[];
   constraints: string[];
   targetPlatform: FactoryTargetPlatform;
+  connector?: FactoryConnectorBinding;
   acceptanceCriteria: string[];
   buildCommands: string[];
   testCommands: string[];
@@ -28,6 +30,7 @@ export type TypedFactoryRequestInput = {
 
 export type TypedFactoryRequest = TypedFactoryRequestInput & {
   schemaVersion: typeof FACTORY_REQUEST_SCHEMA_VERSION;
+  connector: FactoryConnectorBinding;
   traceId: string;
   appName: string;
   description: string;
@@ -84,6 +87,7 @@ function canonicalInput(input: TypedFactoryRequestInput): string {
     requirements: input.requirements.map((item) => item.trim()),
     constraints: input.constraints.map((item) => item.trim()),
     targetPlatform: input.targetPlatform,
+    connector: input.connector ?? DEFAULT_FACTORY_CONNECTOR,
     acceptanceCriteria: input.acceptanceCriteria.map((item) => item.trim()),
     buildCommands: input.buildCommands.map((item) => item.trim()),
     testCommands: input.testCommands.map((item) => item.trim()),
@@ -112,6 +116,7 @@ export function validateTypedFactoryRequest(request: unknown, projectTypesConfig
   requireTextList(value.requirements, "requirements", errors);
   requireTextList(value.constraints, "constraints", errors);
   if (!isFactoryTargetPlatformRegistered(value.targetPlatform, projectTypesConfig)) errors.push("targetPlatform غير مسجل في Factory Project Type Registry.");
+  if (!isFactoryConnectorBinding(value.connector)) errors.push("connector غير صالح أو لا يحتوي على capabilities مسجلة.");
   requireText(value.traceId ?? value.requestId, "traceId", errors, 2);
   requireText(value.appName, "appName", errors, 2);
   requireText(value.description, "description", errors, 2);
@@ -143,6 +148,7 @@ export async function createTypedFactoryRequest(input: TypedFactoryRequestInput,
     storage: string;
     dependencies: string[];
     securityPrivacy: string[];
+    connector: FactoryConnectorBinding;
   } = {
     projectId: input.projectId.trim(),
     requestId: input.requestId.trim(),
@@ -160,6 +166,7 @@ export async function createTypedFactoryRequest(input: TypedFactoryRequestInput,
     requirements: input.requirements.map((item) => item.trim()),
     constraints: input.constraints.map((item) => item.trim()),
     targetPlatform: input.targetPlatform,
+    connector: input.connector ?? DEFAULT_FACTORY_CONNECTOR,
     acceptanceCriteria: input.acceptanceCriteria.map((item) => item.trim()),
     buildCommands: input.buildCommands.map((item) => item.trim()),
     testCommands: input.testCommands.map((item) => item.trim()),

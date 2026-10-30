@@ -47,8 +47,6 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: "8.10"
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
@@ -133,12 +131,12 @@ jobs:
       - name: Compile Java sources
         id: compile
         working-directory: web/factory-template
-        run: gradle --no-daemon --stacktrace :app:compileDebugJavaWithJavac
+        run: ./gradlew --no-daemon --stacktrace :app:compileDebugJavaWithJavac
 
       - name: Build debug APK
         id: build
         working-directory: web/factory-template
-        run: gradle --no-daemon --stacktrace assembleDebug
+        run: ./gradlew --no-daemon --stacktrace assembleDebug
 
       - name: Collect build verification evidence
         if: always()

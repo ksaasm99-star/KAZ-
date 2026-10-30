@@ -32,3 +32,13 @@
 - [ ] APK: BLOCKED وخارج نطاق إغلاق Web؛ لم يتم بناء APK أو لمس Android.
 
 الدليل الكامل: `P4_4_VERIFICATION.md`، واللقطات: `evidence/p4-4-mobile-home.png` و`evidence/p4-4-mobile-app.png`.
+
+
+## P4.5.1 — Unified Connector Contract
+
+- [x] عقد موحد في `src/agent/unifiedConnector.ts` يصف العمليات: analyze, plan, preview, apply, build, artifact.
+- [x] قائمة موصلات قابلة للاختيار: `github` و`kaz-workspace`، مع provider وauthMode وconnectionState وownerApprovalRequired.
+- [x] `TypedFactoryRequest` يحمل binding الموصل داخل `inputDigest`؛ تغيير الموصل يكسر البصمة ويُرفض.
+- [x] لا يوجد تنفيذ خارجي أو موافقة ذاتية داخل العقد؛ التنفيذ يبقى خلف Pipeline الحالي.
+- [x] الاختبار المستهدف وTypeScript PASS.
+- [ ] اتصال GitHub OAuth أو تشغيل Workflow لم يُنفذ في هذه الدفعة؛ سيأتي بعد اعتماد العقد وربطه بطبقة Backend.
