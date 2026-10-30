@@ -1,6 +1,17 @@
-export type ModelFormat = "gguf" | "pte" | "safetensors";
+export type ModelFormat = "gguf" | "pte" | "safetensors" | "onnx";
 export type ModelExecution = "local" | "cloud";
-export type ModelStatus = "planned" | "available" | "installed" | "verified" | "failed";
+export type ModelStatus =
+  | "planned"
+  | "registered"
+  | "downloading"
+  | "paused"
+  | "available"
+  | "installed"
+  | "verifying"
+  | "verified"
+  | "corrupted"
+  | "failed"
+  | "deleted";
 export type ModelCapability = "chat" | "planning" | "code" | "review" | "embedding";
 
 export type ModelRegistryEntry = {
@@ -17,11 +28,17 @@ export type ModelRegistryEntry = {
     uri: string;
     sizeBytes?: number;
     sha256?: string;
+    computedSha256?: string;
+    localPath?: string;
+    downloadedBytes?: number;
   };
+  sourceUrl?: string;
+  license?: string;
   runtime: "llama.cpp" | "executorch" | "managed-api";
   requirements: {
     minimumMemoryMb?: number;
     preferredMemoryMb?: number;
+    storageRequiredMb?: number;
     androidAbis?: string[];
   };
   policy: {
@@ -36,6 +53,9 @@ export type ModelRegistryEntry = {
     lastVerifiedAt?: string;
     evidence?: string;
   };
+  createdAt?: string;
+  updatedAt?: string;
+  errorMessage?: string;
 };
 
 export type ModelSelectionRequest = {
@@ -106,4 +126,133 @@ export function selectModel(request: ModelSelectionRequest): ModelRegistryEntry 
     ?? candidates.find((model) => model.status === "available")
     ?? candidates[0]
     ?? null;
+}
+
+
+export type ModelRegistryState = {
+  version: number;
+  models: readonly ModelRegistryEntry[];
+};
+
+export type ModelDeviceProfile = {
+  availableMemoryMb?: number;
+  availableStorageMb?: number;
+  runtime: ModelRegistryEntry["runtime"];
+  androidAbi?: string;
+};
+
+export type ModelDownloadPlan = {
+  modelId: string;
+  sourceUrl: string;
+  remoteSizeBytes?: number;
+  requiredStorageBytes?: number;
+  storageAvailable: boolean;
+  remoteCheck: "ok" | "unavailable";
+  downloadStarted: false;
+};
+
+export type ModelCompatibility = {
+  compatible: boolean;
+  reasons: string[];
+  hasEnoughMemory: boolean;
+  hasEnoughStorage: boolean;
+  runtimeAvailable: boolean;
+  abiSupported: boolean;
+};
+
+export const MODEL_REGISTRY_STATE: ModelRegistryState = {
+  version: MODEL_REGISTRY_VERSION,
+  models: MODEL_REGISTRY,
+};
+
+export function getModel(
+  registry: ModelRegistryState,
+  modelId: string,
+): ModelRegistryEntry | null {
+  return registry.models.find((model) => model.id === modelId) ?? null;
+}
+
+export function registerModel(
+  registry: ModelRegistryState,
+  model: ModelRegistryEntry,
+): ModelRegistryState {
+  if (registry.models.some((entry) => entry.id === model.id)) {
+    throw new Error(`Model already registered: ${model.id}`);
+  }
+
+  const now = new Date().toISOString();
+  return {
+    ...registry,
+    models: [...registry.models, { ...model, createdAt: model.createdAt ?? now, updatedAt: model.updatedAt ?? now }],
+  };
+}
+
+export function updateModel(
+  registry: ModelRegistryState,
+  modelId: string,
+  patch: Partial<ModelRegistryEntry>,
+): ModelRegistryState {
+  const existing = getModel(registry, modelId);
+  if (!existing) {
+    throw new Error(`Model not found: ${modelId}`);
+  }
+
+  return {
+    ...registry,
+    models: registry.models.map((model) =>
+      model.id === modelId
+        ? { ...model, ...patch, id: model.id, updatedAt: new Date().toISOString() }
+        : model,
+    ),
+  };
+}
+
+export function canRunModel(model: ModelRegistryEntry): boolean {
+  if (model.status !== "verified") {
+    return false;
+  }
+
+  if (model.execution === "cloud") {
+    return model.verification.metadataRead;
+  }
+
+  return model.verification.metadataRead && model.verification.loaded && model.verification.firstToken;
+}
+
+export function getModelProvider(modelId: string): string {
+  const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
+  const configured = env?.KAZ_FORCE_PROVIDER?.trim() || env?.KAZ_DEFAULT_PROVIDER?.trim() || "ollama";
+  return configured.toLowerCase();
+}
+
+export function checkModelCompatibility(
+  model: ModelRegistryEntry,
+  device: ModelDeviceProfile,
+): ModelCompatibility {
+  const reasons: string[] = [];
+  const minimumMemory = model.requirements.minimumMemoryMb;
+  const requiredStorage = model.requirements.storageRequiredMb ?? 0;
+  const hasEnoughMemory = minimumMemory === undefined
+    || device.availableMemoryMb === undefined
+    || device.availableMemoryMb >= minimumMemory;
+  const hasEnoughStorage = device.availableStorageMb === undefined
+    || device.availableStorageMb >= requiredStorage;
+  const runtimeAvailable = model.runtime === device.runtime;
+  const abiSupported = !model.requirements.androidAbis?.length
+    || !device.androidAbi
+    || model.requirements.androidAbis.includes(device.androidAbi);
+
+  if (!hasEnoughMemory) reasons.push("insufficient_memory");
+  if (!hasEnoughStorage) reasons.push("insufficient_storage");
+  if (!runtimeAvailable) reasons.push("runtime_unavailable");
+  if (!abiSupported) reasons.push("android_abi_unsupported");
+
+  return {
+    compatible: reasons.length === 0,
+    reasons,
+    hasEnoughMemory,
+    hasEnoughStorage,
+    runtimeAvailable,
+    abiSupported,
+  };
 }

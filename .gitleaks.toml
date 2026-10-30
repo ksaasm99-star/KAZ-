@@ -1,0 +1,16 @@
+title = "KAZ Gitleaks policy"
+
+[extend]
+useDefault = true
+
+# بيانات اختبار اصطناعية فقط، بشرط تطابق المسار والنمط معًا.
+[[allowlists]]
+description = "Synthetic fixtures only"
+condition = "AND"
+paths = [
+  '''^web/tests/fixtures/.*\.json$'''
+]
+regexTarget = "line"
+regexes = [
+  '''(?i)(EXAMPLE|DUMMY|TEST_ONLY)_(TOKEN|KEY)\s*[:=]'''
+]

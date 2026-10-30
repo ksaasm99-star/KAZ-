@@ -1,12 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import BuildScreen from "./screens/BuildScreen";
 import ConversationScreen from "./screens/ConversationScreen";
 import HomeScreen from "./screens/HomeScreen";
 import ProjectWorkspaceScreen from "./screens/ProjectWorkspaceScreen";
 import SettingsScreen from "./screens/SettingsScreen";
+import ModelManagementScreen from "./screens/ModelManagementScreen";
+import DiagnosticsScreen from "./screens/DiagnosticsScreen";
+import ErrorBoundary from "./components/ErrorBoundary";
 import { createProject } from "./project";
 import type { Project, ProjectDraft } from "./project";
-import { loadArchivedProjects, loadProjects, restoreArchivedProject, saveProject } from "./memoryApi";
+import { archiveProject, loadArchivedProjects, loadProjects, restoreArchivedProject, saveProject } from "./memoryApi";
 
 function BrandMark() {
   return <span className="brand-mark" aria-hidden="true"><span /></span>;
@@ -16,27 +19,81 @@ function Glyph({ children }: { children: string }) {
   return <span className="glyph" aria-hidden="true">{children}</span>;
 }
 
-export default function App() {
+type AppView = "home" | "dashboard" | "build" | "project" | "conversation" | "settings" | "models" | "diagnostics";
+
+type AppRoute = {
+  view: AppView;
+  projectId?: string;
+};
+
+function routeFromLocation(): AppRoute {
+  if (typeof window === "undefined") return { view: "home" };
+  const path = window.location.pathname.replace(/\/+$/, "") || "/";
+  if (path === "/") return { view: "home" };
+  if (path === "/app" || path === "/app/projects") return { view: "dashboard" };
+  if (path === "/app/new") return { view: "build" };
+  if (path === "/app/conversation") return { view: "conversation" };
+  if (path === "/app/settings") return { view: "settings" };
+  if (path === "/app/models") return { view: "models" };
+  if (path === "/app/diagnostics") return { view: "diagnostics" };
+  if (path.startsWith("/app/projects/")) {
+    const projectId = decodeURIComponent(path.slice("/app/projects/".length));
+    if (projectId) return { view: "project", projectId };
+  }
+  return { view: "home" };
+}
+
+function isRouteActive(current: AppView, candidate: AppView) {
+  return current === candidate;
+}
+
+function AppContent() {
+  const initialRoute = routeFromLocation();
   const [query, setQuery] = useState("");
   const [projects, setProjects] = useState<Project[]>([]);
   const [archivedProjects, setArchivedProjects] = useState<Project[]>([]);
   const [memoryReady, setMemoryReady] = useState(false);
   const [persistentMemory, setPersistentMemory] = useState(false);
+  const [memoryError, setMemoryError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [restoringProjectId, setRestoringProjectId] = useState<string | null>(null);
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
-  const [view, setView] = useState<"home" | "dashboard" | "build" | "project" | "conversation" | "settings">("home");
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(initialRoute.projectId ?? null);
+  const [view, setView] = useState<AppView>(initialRoute.view);
+
+  function navigate(path: string) {
+    window.history.pushState({}, "", path);
+    const route = routeFromLocation();
+    setView(route.view);
+    setSelectedProjectId(route.projectId ?? null);
+  }
+
+  const refreshProjects = useCallback(async () => {
+    const [activeProjects, archived] = await Promise.all([loadProjects(), loadArchivedProjects()]);
+    setProjects(activeProjects.projects);
+    setArchivedProjects(archived.projects);
+    setPersistentMemory(activeProjects.persistent && archived.persistent);
+    setMemoryError(null);
+    setMemoryReady(true);
+  }, []);
 
   useEffect(() => {
     let active = true;
-    Promise.all([loadProjects(), loadArchivedProjects()]).then(([activeProjects, archived]) => {
+    refreshProjects().catch((error) => {
       if (!active) return;
-      setProjects(activeProjects.projects);
-      setArchivedProjects(archived.projects);
-      setPersistentMemory(activeProjects.persistent);
+      setMemoryError(error instanceof Error ? error.message : "تعذر الاتصال بذاكرة KAZ الدائمة.");
       setMemoryReady(true);
     });
     return () => { active = false; };
+  }, [refreshProjects]);
+
+  useEffect(() => {
+    const syncRoute = () => {
+      const route = routeFromLocation();
+      setView(route.view);
+      setSelectedProjectId(route.projectId ?? null);
+    };
+    window.addEventListener("popstate", syncRoute);
+    return () => window.removeEventListener("popstate", syncRoute);
   }, []);
 
   const filteredProjects = useMemo(() => {
@@ -49,38 +106,53 @@ export default function App() {
 
   function handleNewProject() {
     setNotice(null);
-    setView("build");
+    navigate("/app/new");
+  }
+
+  function openDiagnostics() {
+    navigate("/app/diagnostics");
+  }
+
+  function closeDiagnostics() {
+    navigate("/app");
   }
 
   async function handleProjectCreated(draft: ProjectDraft) {
     const project = createProject(draft);
-    const result = await saveProject(project);
-    setProjects((current) => [result.project, ...current.filter((item) => item.id !== result.project.id)]);
-    setPersistentMemory(result.persistent);
-    setSelectedProjectId(result.project.id);
-    setView("project");
-    setNotice(result.persistent ? "تم إنشاء المشروع وحفظه في ذاكرة KAZ الدائمة." : "تم إنشاء المشروع محليًا مؤقتًا؛ التخزين الدائم غير متاح الآن.");
+    const result = await saveProject(project, false);
+    await refreshProjects();
+    navigate(`/app/projects/${encodeURIComponent(result.project.id)}`);
+    setNotice("تم إنشاء المشروع وحفظه في ذاكرة KAZ الدائمة.");
     window.setTimeout(() => setNotice(null), 4200);
   }
 
   function openProject(projectId: string) {
-    setSelectedProjectId(projectId);
-    setView("project");
+    navigate(`/app/projects/${encodeURIComponent(projectId)}`);
   }
 
   async function updateProject(updated: Project) {
-    const result = await saveProject(updated);
-    setProjects((current) => current.map((project) => project.id === result.project.id ? result.project : project));
-    setPersistentMemory(result.persistent);
+    await saveProject(updated, true);
+    await refreshProjects();
+  }
+
+  async function handleArchiveProject(projectId: string) {
+    try {
+      const result = await archiveProject(projectId);
+      if (!result.archived) throw new Error("تعذر أرشفة المشروع.");
+      await refreshProjects();
+      navigate("/app");
+      setNotice("تمت أرشفة المشروع وحفظه في ذاكرة KAZ.");
+      window.setTimeout(() => setNotice(null), 4200);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "تعذر أرشفة المشروع الآن.");
+    }
   }
 
   async function handleRestoreProject(projectId: string) {
     setRestoringProjectId(projectId);
     try {
-      const result = await restoreArchivedProject(projectId);
-      setProjects((current) => [result.project, ...current.filter((item) => item.id !== result.project.id)]);
-      setArchivedProjects((current) => current.filter((item) => item.id !== projectId));
-      setPersistentMemory(result.persistent);
+      await restoreArchivedProject(projectId);
+      await refreshProjects();
       setNotice("تمت استعادة المشروع وإعادته إلى قائمة مشاريعك.");
       window.setTimeout(() => setNotice(null), 4200);
     } catch (error) {
@@ -91,32 +163,38 @@ export default function App() {
   }
 
   if (view === "home") {
-    return <HomeScreen onOpenWorkspace={() => setView("dashboard")} onStartBuild={handleNewProject} />;
+    return <HomeScreen onOpenWorkspace={() => navigate("/app")} onStartBuild={handleNewProject} />;
   }
 
-  if (!memoryReady && view === "dashboard") {
+  if (!memoryReady && (view === "dashboard" || view === "project")) {
     return <div className="memory-loading-screen"><span className="section-kicker">ذاكرة KAZ</span><h1>جاري استعادة مشاريعك</h1><p>يتم تحميل الذاكرة الدائمة والأرشيف بأمان.</p></div>;
   }
 
+  if (memoryError && (view === "dashboard" || view === "project")) {
+    return <div className="missing-project-screen"><span className="section-kicker">ذاكرة KAZ</span><h1>تعذر الاتصال بالذاكرة الدائمة</h1><p>{memoryError}</p><button className="back-button" type="button" onClick={() => window.location.reload()}>إعادة المحاولة</button></div>;
+  }
+
   if (view === "build") {
-    return <BuildScreen onBack={() => setView("dashboard")} onSaved={handleProjectCreated} />;
+    return <BuildScreen onBack={() => navigate("/app")} onSaved={handleProjectCreated} />;
   }
 
   if (view === "project") {
     const project = projects.find((item) => item.id === selectedProjectId);
-    if (project) return <ProjectWorkspaceScreen project={project} onBack={() => setView("dashboard")} onUpdate={updateProject} />;
-    return <div className="missing-project-screen"><span className="section-kicker">مساحة KAZ</span><h1>تعذر فتح المشروع</h1><p>لم يعد هذا المشروع متاحًا في القائمة الحالية. ارجع إلى المشاريع لإعادة تحميل الذاكرة.</p><button className="back-button" type="button" onClick={() => setView("dashboard")}><span>→</span> العودة للمشاريع</button></div>;
+    if (project) return <ProjectWorkspaceScreen project={project} onBack={() => navigate("/app")} onUpdate={updateProject} onArchive={() => handleArchiveProject(project.id)} />;
+    return <div className="missing-project-screen"><span className="section-kicker">مساحة KAZ</span><h1>تعذر فتح المشروع</h1><p>لم يعد هذا المشروع متاحًا في القائمة الحالية. ارجع إلى المشاريع لإعادة تحميل الذاكرة.</p><button className="back-button" type="button" onClick={() => navigate("/app")}><span>→</span> العودة للمشاريع</button></div>;
   }
 
-  if (view === "conversation") return <ConversationScreen onBack={() => setView("dashboard")} />;
-  if (view === "settings") return <SettingsScreen onBack={() => setView("dashboard")} />;
+  if (view === "conversation") return <ConversationScreen onBack={() => navigate("/app")} />;
+  if (view === "settings") return <SettingsScreen onBack={() => navigate("/app")} />;
+  if (view === "models") return <ModelManagementScreen onBack={() => navigate("/app")} />;
+  if (view === "diagnostics") return <DiagnosticsScreen onBack={closeDiagnostics} />;
 
   return (
     <div className="app-shell">
       <aside className="side-rail" aria-label="التنقل الرئيسي">
         <div className="rail-brand"><BrandMark /><span>KAZ</span></div>
         <nav className="rail-nav">
-          <button className="rail-link active" type="button" aria-current="page">
+          <button className={`rail-link ${view === "dashboard" ? "active" : ""}`} type="button" aria-current={view === "dashboard" ? "page" : undefined} onClick={() => navigate("/app")}>
             <Glyph>⌂</Glyph><span>المشاريع</span>
           </button>
           <button className="rail-link" type="button" onClick={handleNewProject}>
@@ -125,11 +203,17 @@ export default function App() {
           <button className="rail-link rail-link-disabled" type="button" disabled aria-label="حزم التطبيقات — ستتوفر لاحقًا">
             <Glyph>▦</Glyph><span>حزم التطبيقات <small>قريبًا</small></span>
           </button>
-          <button className="rail-link" type="button" onClick={() => setView("conversation")}>
+          <button className={`rail-link ${isRouteActive(view, "conversation") ? "active" : ""}`} type="button" aria-current={isRouteActive(view, "conversation") ? "page" : undefined} onClick={() => navigate("/app/conversation")}>
             <Glyph>◌</Glyph><span>المحادثة</span>
           </button>
+          <button className={`rail-link ${isRouteActive(view, "models") ? "active" : ""}`} type="button" aria-current={isRouteActive(view, "models") ? "page" : undefined} onClick={() => navigate("/app/models")}>
+            <Glyph>◈</Glyph><span>النماذج</span>
+          </button>
+          <button className="rail-link" type="button" onClick={openDiagnostics}>
+            <Glyph>⌁</Glyph><span>التشخيص</span>
+          </button>
         </nav>
-        <button className="rail-link rail-settings" type="button" onClick={() => setView("settings")}>
+        <button className={`rail-link rail-settings ${isRouteActive(view, "settings") ? "active" : ""}`} type="button" aria-current={isRouteActive(view, "settings") ? "page" : undefined} onClick={() => navigate("/app/settings")}>
           <Glyph>⚙</Glyph><span>الإعدادات</span>
         </button>
       </aside>
@@ -208,14 +292,20 @@ export default function App() {
         </div>
 
         <nav className="mobile-nav" aria-label="التنقل على الجوال">
-          <button className="mobile-nav-link active" type="button"><Glyph>⌂</Glyph><span>المشاريع</span></button>
+          <button className={`mobile-nav-link ${view === "dashboard" ? "active" : ""}`} type="button" aria-current={view === "dashboard" ? "page" : undefined} onClick={() => navigate("/app")}><Glyph>⌂</Glyph><span>المشاريع</span></button>
           <button className="mobile-nav-link" type="button" onClick={handleNewProject}><Glyph>＋</Glyph><span>بناء</span></button>
-          <button className="mobile-nav-link" type="button" onClick={() => setView("conversation")}><Glyph>◌</Glyph><span>المحادثة</span></button>
-          <button className="mobile-nav-link" type="button" onClick={() => setView("settings")}><Glyph>⚙</Glyph><span>الإعدادات</span></button>
+          <button className={`mobile-nav-link ${isRouteActive(view, "conversation") ? "active" : ""}`} type="button" aria-current={isRouteActive(view, "conversation") ? "page" : undefined} onClick={() => navigate("/app/conversation")}><Glyph>◌</Glyph><span>المحادثة</span></button>
+          <button className={`mobile-nav-link ${isRouteActive(view, "models") ? "active" : ""}`} type="button" aria-current={isRouteActive(view, "models") ? "page" : undefined} onClick={() => navigate("/app/models")}><Glyph>◈</Glyph><span>النماذج</span></button>
+          <button className="mobile-nav-link" type="button" onClick={openDiagnostics}><Glyph>⌁</Glyph><span>التشخيص</span></button>
+          <button className={`mobile-nav-link ${isRouteActive(view, "settings") ? "active" : ""}`} type="button" aria-current={isRouteActive(view, "settings") ? "page" : undefined} onClick={() => navigate("/app/settings")}><Glyph>⚙</Glyph><span>الإعدادات</span></button>
         </nav>
       </main>
 
       {notice && <div className="toast" role="status"><span className="toast-check">✓</span>{notice}<button type="button" onClick={() => setNotice(null)} aria-label="إغلاق التنبيه">×</button></div>}
     </div>
   );
+}
+
+export default function App() {
+  return <ErrorBoundary><AppContent /></ErrorBoundary>;
 }

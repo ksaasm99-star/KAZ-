@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "projectId": "kaz-e2e-todo-1793327776335",
+  "requestId": "request-kaz-e2e-todo-1793327776335",
+  "commitSha": null,
+  "inputDigest": "sha256:e2d7e5a2ad9af9523916e45e2aec1ac2de73bc659f8b4b83f36ee383c6cb38e7",
+  "testResults": [
+    {
+      "name": "compile",
+      "status": "passed",
+      "details": "COMPILE_OK"
+    },
+    {
+      "name": "build",
+      "status": "passed",
+      "details": "BUILD_OK"
+    }
+  ],
+  "artifactPath": "artifacts/todo-android-source.tar.gz",
+  "artifactSha256": "5d9375781a79b3926a16af8e37a9aa7410c59fe7df308e3c3bf7430678e6133a",
+  "ledger": {
+    "approvalEventId": "6d797871-84d1-435e-9020-5aaf0a71fcc7",
+    "executionEventId": "717610c7-4c3c-4156-a148-f8d00cc14021",
+    "approvalHash": "0651093e6140f10f61e4730287990d5933d3bfbbd83ed36e0d5f4e705237de5a",
+    "executionHash": "108b2ca7e3ad6aa0559d9bb3f3310c53f91a8c26bda32a25ffe8902e38d0d121"
+  },
+  "generatedAt": "2026-10-30T02:36:16.719Z"
+}

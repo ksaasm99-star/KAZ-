@@ -1,1 +1,12 @@
-{"routes":[{"path":"/","title":"الرئيسية"}]}
+{
+  "routes": [
+    { "path": "/", "title": "KAZ" },
+    { "path": "/app", "title": "مساحة المشاريع" },
+    { "path": "/app/new", "title": "مشروع جديد" },
+    { "path": "/app/projects/:id", "title": "مساحة المشروع" },
+    { "path": "/app/conversation", "title": "المحادثة" },
+    { "path": "/app/settings", "title": "الإعدادات" },
+    { "path": "/app/models", "title": "النماذج" },
+    { "path": "/app/diagnostics", "title": "التشخيص" }
+  ]
+}

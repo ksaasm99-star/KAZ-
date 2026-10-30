@@ -1,12 +1,24 @@
 name: Build KAZ APK
 
-run-name: KAZ APK build — ${{ github.event.client_payload.request_id || github.run_id }}
+run-name: KAZ APK build — ${{ github.event.client_payload.requestId || inputs.requestId || github.run_id }}
 
 on:
   workflow_dispatch:
     inputs:
-      project_json_b64:
-        description: "Base64 JSON for the KAZ project draft"
+      projectId:
+        description: "KAZ project ID"
+        required: true
+        type: string
+      requestId:
+        description: "KAZ factory request ID"
+        required: true
+        type: string
+      inputDigest:
+        description: "Expected project payload digest"
+        required: true
+        type: string
+      artifactName:
+        description: "APK artifact name"
         required: true
         type: string
   repository_dispatch:
@@ -16,7 +28,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: kaz-apk-build-${{ github.event.client_payload.request_id || github.run_id }}
+  group: kaz-apk-build-${{ github.event.client_payload.requestId || inputs.requestId || github.run_id }}
   cancel-in-progress: false
 
 jobs:
@@ -44,19 +56,50 @@ jobs:
       - name: Install Android build tools
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Materialize project draft
+      - name: Fetch private project payload
         env:
-          PROJECT_JSON_B64: ${{ github.event.client_payload.project_json_b64 || inputs.project_json_b64 }}
+          PROJECT_ID: ${{ github.event.client_payload.projectId || inputs.projectId }}
+          REQUEST_ID: ${{ github.event.client_payload.requestId || inputs.requestId }}
+          EXPECTED_INPUT_DIGEST: ${{ github.event.client_payload.inputDigest || inputs.inputDigest }}
+          ARTIFACT_NAME: ${{ github.event.client_payload.artifactName || inputs.artifactName }}
+          KAZ_PAYLOAD_URL: ${{ vars.KAZ_PAYLOAD_URL }}
+          KAZ_OWNER_TOKEN: ${{ secrets.KAZ_OWNER_TOKEN }}
         run: |
           python3 - <<'PY'
           import base64
+          import hashlib
           import html
           import json
-          import pathlib
+          import os
           import re
+          import pathlib
+          import urllib.parse
+          import urllib.request
 
-          raw = base64.b64decode(__import__('os').environ['PROJECT_JSON_B64']).decode('utf-8')
-          project = json.loads(raw)
+          base_url = os.environ.get('KAZ_PAYLOAD_URL', '').strip()
+          token = os.environ.get('KAZ_OWNER_TOKEN', '').strip()
+          project_id = os.environ.get('PROJECT_ID', '').strip()
+          if not base_url or not token or not project_id:
+              raise SystemExit('KAZ_PAYLOAD_URL, KAZ_OWNER_TOKEN and PROJECT_ID are required')
+          query = urllib.parse.urlencode({'projectId': project_id})
+          request = urllib.request.Request(f"{base_url.rstrip('/')}/api/factory/payload?{query}", headers={'Accept': 'application/json', 'Authorization': f'Bearer {token}'})
+          with urllib.request.urlopen(request, timeout=10) as response:
+              payload = json.load(response)
+          if payload.get('projectId') != project_id:
+              raise SystemExit('PROJECT_ID_MISMATCH')
+          raw = base64.b64decode(payload.get('project_json_b64', ''), validate=True)
+          actual_digest = 'sha256:' + hashlib.sha256(raw).hexdigest()
+          if actual_digest != os.environ.get('EXPECTED_INPUT_DIGEST', '').strip() or actual_digest != payload.get('inputDigest'):
+              raise SystemExit('INPUT_DIGEST_MISMATCH')
+          artifact_name = os.environ.get('ARTIFACT_NAME', '').strip()
+          if not re.fullmatch(r'[A-Za-z0-9_-]+\.apk', artifact_name):
+              raise SystemExit('INVALID_ARTIFACT_NAME')
+          pathlib.Path('build-output').mkdir(exist_ok=True)
+          pathlib.Path('build-output/project.json').write_bytes(raw)
+          pathlib.Path('build-output/input-digest.txt').write_text(actual_digest, encoding='utf-8')
+          pathlib.Path('build-output/project-id.txt').write_text(project_id, encoding='utf-8')
+          pathlib.Path('build-output/artifact-name.txt').write_text(artifact_name, encoding='utf-8')
+          project = json.loads(raw.decode('utf-8'))
           title = str(project.get('title') or 'KAZ App').strip() or 'KAZ App'
           summary = str(project.get('summary') or '').strip()
           sources = project.get('sources') or []
@@ -81,37 +124,84 @@ jobs:
           (root / 'res/values/strings.xml').write_text(
               '<?xml version="1.0" encoding="utf-8"?><resources><string name="app_name">'
               + html.escape(title, quote=True) + '</string></resources>', encoding='utf-8')
-          pathlib.Path('build-output').mkdir(exist_ok=True)
           pathlib.Path('build-output/build-name.txt').write_text(safe_title, encoding='utf-8')
+          print(f'PAYLOAD_FETCHED_FROM_API=true')
           print(f'MATERIALIZED_PROJECT={safe_title}')
           print(f'SOURCES={len(sources)} KNOWLEDGE={len(knowledge)}')
           PY
 
+      - name: Compile Kotlin sources
+        id: compile
+        working-directory: web/factory-template
+        run: gradle --no-daemon --stacktrace :app:compileDebugKotlin
+
       - name: Build debug APK
+        id: build
         working-directory: web/factory-template
         run: gradle --no-daemon --stacktrace assembleDebug
 
+      - name: Collect build verification evidence
+        if: always()
+        env:
+          COMPILE_OUTCOME: ${{ steps.compile.outcome }}
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import pathlib
+          from datetime import datetime, timezone
+
+          output = pathlib.Path('build-output')
+          output.mkdir(exist_ok=True)
+          artifact_source = pathlib.Path('web/factory-template/app/build/outputs/apk/debug/app-debug.apk')
+          artifact_sha256 = None
+          artifact_path = None
+          if artifact_source.is_file():
+              artifact_sha256 = __import__('hashlib').sha256(artifact_source.read_bytes()).hexdigest()
+              artifact_path = str(artifact_source)
+          input_digest = (output / 'input-digest.txt').read_text(encoding='utf-8').strip() if (output / 'input-digest.txt').is_file() else None
+          project_id = (output / 'project-id.txt').read_text(encoding='utf-8').strip() if (output / 'project-id.txt').is_file() else 'unknown'
+          evidence = {
+              'projectId': project_id,
+              'requestId': os.environ.get('REQUEST_ID', '${{ github.event.client_payload.requestId || inputs.requestId || github.run_id }}'),
+              'runId': '${{ github.run_id }}',
+              'commitSha': '${{ github.sha }}',
+              'inputDigest': input_digest,
+              'testResults': [{'name': 'compile', 'status': 'passed' if os.environ.get('COMPILE_OUTCOME') == 'success' else 'failed'}, {'name': 'build', 'status': 'passed' if os.environ.get('BUILD_OUTCOME') == 'success' else 'failed'}],
+              'compile': os.environ.get('COMPILE_OUTCOME', 'unknown'),
+              'build': os.environ.get('BUILD_OUTCOME', 'unknown'),
+              'artifactPath': artifact_path,
+              'artifactSha256': artifact_sha256,
+              'recordedAt': datetime.now(timezone.utc).isoformat(),
+          }
+          (output / 'verification.json').write_text(json.dumps(evidence, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          print(json.dumps(evidence, ensure_ascii=False))
+
       - name: Prepare APK artifact
         id: artifact
+        if: steps.build.outcome == 'success'
         run: |
-          NAME=$(cat build-output/build-name.txt)
-          APK="${NAME}.apk"
+          APK=$(cat build-output/artifact-name.txt)
           cp web/factory-template/app/build/outputs/apk/debug/app-debug.apk "build-output/${APK}"
           sha256sum "build-output/${APK}" | tee "build-output/${APK}.sha256"
           echo "apk=${APK}" >> "$GITHUB_OUTPUT"
 
       - name: Upload APK artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: kaz-apk-${{ github.run_id }}
           path: |
             build-output/*.apk
             build-output/*.sha256
-          if-no-files-found: error
+            build-output/verification.json
+          if-no-files-found: warn
           retention-days: 14
 
       - name: Publish direct download release
         id: release
+        if: steps.build.outcome == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

@@ -25,6 +25,7 @@ export type ProjectManifest = {
   workspace: {
     root?: string;
     sourceOfTruth?: string;
+    allowedWritePrefixes?: string[];
     entryPoints: string[];
     buildCommands: string[];
     testCommands: string[];
