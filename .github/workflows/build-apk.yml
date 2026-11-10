@@ -25,7 +25,7 @@ on:
     types: [kaz-build]
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: kaz-apk-build-${{ github.event.client_payload.requestId || inputs.requestId || github.run_id }}
@@ -196,25 +196,3 @@ jobs:
             build-output/verification.json
           if-no-files-found: warn
           retention-days: 14
-
-      - name: Publish direct download release
-        id: release
-        if: steps.build.outcome == 'success'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          TAG="kaz-build-${GITHUB_RUN_ID}"
-          APK="build-output/${{ steps.artifact.outputs.apk }}"
-          gh release create "$TAG" "$APK" "${APK}.sha256" \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "KAZ APK build ${GITHUB_RUN_NUMBER}" \
-            --notes "Generated from KAZ project draft. Source commit: ${GITHUB_SHA}."
-          URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${{ steps.artifact.outputs.apk }}"
-          echo "apk_url=${URL}" >> "$GITHUB_OUTPUT"
-          {
-            echo "## KAZ APK"
-            echo ""
-            echo "Direct download: ${URL}"
-            echo ""
-            echo "Source commit: ${GITHUB_SHA}"
-          } >> "$GITHUB_STEP_SUMMARY"

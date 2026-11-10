@@ -1,0 +1,104 @@
+name: Publish KAZ APK
+
+run-name: Publish KAZ APK — ${{ inputs.sourceRunId }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      sourceRunId:
+        description: "Successful Build Workflow run ID"
+        required: true
+        type: string
+      sourceCommitSha:
+        description: "Commit SHA produced by the Build Workflow"
+        required: true
+        type: string
+      artifactName:
+        description: "Build artifact name, for example kaz-apk-123456"
+        required: true
+        type: string
+      apkName:
+        description: "APK filename inside the build artifact"
+        required: true
+        type: string
+      expectedSha256:
+        description: "Expected SHA-256 of the APK"
+        required: true
+        type: string
+      tag:
+        description: "Release tag to create"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: kaz-publish-${{ inputs.sourceRunId }}-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download verified Build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifactName }}
+          path: publish-input
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.sourceRunId }}
+          github-token: ${{ github.token }}
+
+      - name: Verify source, manifest, and APK digest
+        env:
+          SOURCE_RUN_ID: ${{ inputs.sourceRunId }}
+          SOURCE_COMMIT_SHA: ${{ inputs.sourceCommitSha }}
+          APK_NAME: ${{ inputs.apkName }}
+          EXPECTED_SHA256: ${{ inputs.expectedSha256 }}
+        run: |
+          set -Eeuo pipefail
+          test -s "publish-input/${APK_NAME}"
+          test -s publish-input/verification.json
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          apk = Path('publish-input') / os.environ['APK_NAME']
+          manifest = json.loads(Path('publish-input/verification.json').read_text(encoding='utf-8'))
+          expected = os.environ['EXPECTED_SHA256'].strip().lower()
+          actual = hashlib.sha256(apk.read_bytes()).hexdigest()
+          if not re.fullmatch(r'[0-9a-f]{64}', expected):
+              raise SystemExit('INVALID_EXPECTED_SHA256')
+          if actual != expected:
+              raise SystemExit('APK_SHA256_MISMATCH')
+          if manifest.get('runId') != os.environ['SOURCE_RUN_ID']:
+              raise SystemExit('SOURCE_RUN_ID_MISMATCH')
+          if manifest.get('commitSha') != os.environ['SOURCE_COMMIT_SHA']:
+              raise SystemExit('SOURCE_COMMIT_SHA_MISMATCH')
+          if manifest.get('artifactSha256') != actual:
+              raise SystemExit('MANIFEST_SHA256_MISMATCH')
+          if manifest.get('build') != 'success' or manifest.get('compile') != 'success':
+              raise SystemExit('BUILD_NOT_VERIFIED')
+          print(json.dumps({'sourceRunId': os.environ['SOURCE_RUN_ID'], 'sourceCommitSha': os.environ['SOURCE_COMMIT_SHA'], 'apkSha256': actual}, sort_keys=True))
+          PY
+          sha256sum "publish-input/${APK_NAME}" | tee publish-input/${APK_NAME}.sha256
+
+      - name: Publish direct download release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APK_NAME: ${{ inputs.apkName }}
+          TAG: ${{ inputs.tag }}
+          SOURCE_RUN_ID: ${{ inputs.sourceRunId }}
+          SOURCE_COMMIT_SHA: ${{ inputs.sourceCommitSha }}
+        run: |
+          set -Eeuo pipefail
+          gh release create "$TAG" "publish-input/${APK_NAME}" "publish-input/${APK_NAME}.sha256" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "KAZ APK ${TAG}" \
+            --notes "Published from Build Workflow run ${SOURCE_RUN_ID}; source commit: ${SOURCE_COMMIT_SHA}."
