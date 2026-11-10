@@ -135,21 +135,53 @@ jobs:
         working-directory: web/factory-template
         run: ./gradlew --no-daemon --stacktrace :app:compileDebugJavaWithJavac
 
+      - name: Run unit tests
+        id: unit_tests
+        working-directory: web/factory-template
+        run: ./gradlew --no-daemon --stacktrace :app:testDebugUnitTest
+
+      - name: Run lint
+        id: lint
+        working-directory: web/factory-template
+        run: ./gradlew --no-daemon --stacktrace :app:lintDebug
+
       - name: Build debug APK
         id: build
         working-directory: web/factory-template
         run: ./gradlew --no-daemon --stacktrace assembleDebug
 
+      - name: Verify APK signature and native ABI
+        id: apk_verification
+        if: steps.build.outcome == 'success'
+        run: |
+          set -euo pipefail
+          APK="web/factory-template/app/build/outputs/apk/debug/app-debug.apk"
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          [ -n "$SDK_ROOT" ] || { echo "Android SDK root is unavailable"; exit 1; }
+          APKSIGNER="$SDK_ROOT/build-tools/35.0.0/apksigner"
+          [ -x "$APKSIGNER" ] || { echo "apksigner is unavailable at $APKSIGNER"; exit 1; }
+          [ -f "$APK" ] || { echo "APK is unavailable at $APK"; exit 1; }
+          mkdir -p build-output
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee build-output/apksigner.txt
+          unzip -Z1 "$APK" | grep '^lib/' | sort -u | tee build-output/abi.txt || true
+          if [ ! -s build-output/abi.txt ]; then
+            printf 'NO_NATIVE_LIBRARIES\n' | tee build-output/abi.txt
+          fi
+
       - name: Collect build verification evidence
         if: always()
         env:
           COMPILE_OUTCOME: ${{ steps.compile.outcome }}
+          UNIT_TESTS_OUTCOME: ${{ steps.unit_tests.outcome }}
+          LINT_OUTCOME: ${{ steps.lint.outcome }}
           BUILD_OUTCOME: ${{ steps.build.outcome }}
+          APK_VERIFICATION_OUTCOME: ${{ steps.apk_verification.outcome }}
         run: |
           python3 - <<'PY'
           import json
           import os
           import pathlib
+          import re
           from datetime import datetime, timezone
 
           output = pathlib.Path('build-output')
@@ -162,15 +194,21 @@ jobs:
               artifact_path = str(artifact_source)
           input_digest = (output / 'input-digest.txt').read_text(encoding='utf-8').strip() if (output / 'input-digest.txt').is_file() else None
           project_id = (output / 'project-id.txt').read_text(encoding='utf-8').strip() if (output / 'project-id.txt').is_file() else 'unknown'
+          signature_output = (output / 'apksigner.txt').read_text(encoding='utf-8') if (output / 'apksigner.txt').is_file() else ''
+          certificate_match = re.search(r'certificate SHA-256 digest:\s*([0-9A-Fa-f:]+)', signature_output)
+          abi_inventory = [line.strip() for line in (output / 'abi.txt').read_text(encoding='utf-8').splitlines()] if (output / 'abi.txt').is_file() else []
           evidence = {
               'projectId': project_id,
               'requestId': os.environ.get('REQUEST_ID', '${{ github.event.client_payload.requestId || inputs.requestId || github.run_id }}'),
               'runId': '${{ github.run_id }}',
               'commitSha': '${{ github.sha }}',
               'inputDigest': input_digest,
-              'testResults': [{'name': 'compile', 'status': 'passed' if os.environ.get('COMPILE_OUTCOME') == 'success' else 'failed'}, {'name': 'build', 'status': 'passed' if os.environ.get('BUILD_OUTCOME') == 'success' else 'failed'}],
+              'testResults': [{'name': 'compile', 'status': 'passed' if os.environ.get('COMPILE_OUTCOME') == 'success' else 'failed'}, {'name': 'unitTests', 'status': 'passed' if os.environ.get('UNIT_TESTS_OUTCOME') == 'success' else 'failed'}, {'name': 'lint', 'status': 'passed' if os.environ.get('LINT_OUTCOME') == 'success' else 'failed'}, {'name': 'build', 'status': 'passed' if os.environ.get('BUILD_OUTCOME') == 'success' else 'failed'}],
               'compile': os.environ.get('COMPILE_OUTCOME', 'unknown'),
               'build': os.environ.get('BUILD_OUTCOME', 'unknown'),
+              'signatureVerification': os.environ.get('APK_VERIFICATION_OUTCOME', 'unknown'),
+              'certificateSha256': certificate_match.group(1) if certificate_match else None,
+              'nativeAbi': abi_inventory,
               'artifactPath': artifact_path,
               'artifactSha256': artifact_sha256,
               'recordedAt': datetime.now(timezone.utc).isoformat(),
@@ -195,6 +233,8 @@ jobs:
           path: |
             build-output/*.apk
             build-output/*.sha256
+            build-output/apksigner.txt
+            build-output/abi.txt
             build-output/verification.json
           if-no-files-found: warn
           retention-days: 14
